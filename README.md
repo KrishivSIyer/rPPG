@@ -31,22 +31,29 @@ rPPG/
 
 ## 🚀 Quickstart & Setup
 
-### 1. Install Dependencies
-```bash
-pip install -r requirements.txt
+### 1. Install Dependencies in Virtual Environment
+```powershell
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-### 2. Verify Model & Pipeline
-Make sure the MediaPipe model task file is downloaded:
-```bash
-python src/download_models.py
+### 2. Verify Model & Extract RGB Signals (Steps 2 & 3)
+Ensure the MediaPipe Face Landmarker model task file is downloaded:
+```powershell
+.venv\Scripts\python.exe src/download_models.py
 ```
 
-Run the pipeline test script to extract ROI RGB signals from `subject1`:
-```bash
-python src/pipeline.py
+Run the pipeline test script to extract ROI RGB signals:
+```powershell
+.venv\Scripts\python.exe src/pipeline.py
 ```
-*(This will process `data/UBFC-rPPG/DATASET1/subject1/vid-001.avi` and automatically save the output to `results/subject1_rgb.csv`).*
+*(This processes video input and saves frame-by-frame mean RGB values to `results/subject1_rgb.csv`).*
+
+### 3. Estimate Heart Rate via Bandpass Filter + FFT (Step 4)
+Run the heart rate estimation module using the extracted RGB signals:
+```powershell
+.venv\Scripts\python.exe src/heart_rate.py --csv results/subject1_rgb.csv --fps 30.0
+```
+*(This applies a Butterworth bandpass filter [0.75 - 2.5 Hz], computes Welch Power Spectral Density / FFT, estimates Heart Rate in BPM, and saves visual plots to `results/heart_rate_analysis.png`).*
 
 ---
 
