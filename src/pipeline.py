@@ -39,11 +39,14 @@ class FaceLandmarkExtractor:
         )
         self.landmarker = vision.FaceLandmarker.create_from_options(options)
 
-    def extract_landmarks(self, frame_bgr: np.ndarray):
+    def process_frame(self, frame_bgr: np.ndarray):
         """
-        Extract normalized facial landmarks (x, y, z) from a BGR image frame.
-        Returns array of shape (478, 3) or None if no face detected.
+        Processes a single BGR frame.
+        Returns:
+            mean_rgb: np.ndarray of shape (3,) with average [R, G, B] values over facial ROIs,
+                      or None if no face is detected.
         """
+        h, w, _ = frame_bgr.shape
         rgb_frame = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
         mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb_frame)
         detection_result = self.landmarker.detect(mp_image)
@@ -53,17 +56,9 @@ class FaceLandmarkExtractor:
 
         landmarks = detection_result.face_landmarks[0]
         pts = np.array([[lm.x, lm.y, lm.z] for lm in landmarks])
-        return pts
-
-    def extract_roi_mean_rgb(self, frame_bgr: np.ndarray, landmarks: np.ndarray):
-        """
-        Compute mean RGB pixel values across forehead and cheek ROIs.
-        """
-        h, w, _ = frame_bgr.shape
-        rgb_frame = cv2.cvtColor(frame_bgr, cv2.COLOR_BGR2RGB)
 
         all_roi_indices = FOREHEAD_LANDMARKS + LEFT_CHEEK_LANDMARKS + RIGHT_CHEEK_LANDMARKS
-        pixel_coords = np.int32(landmarks[all_roi_indices, :2] * [w, h])
+        pixel_coords = np.int32(pts[all_roi_indices, :2] * [w, h])
 
         # Convex hull mask over facial ROIs
         hull = cv2.convexHull(pixel_coords)
@@ -77,8 +72,72 @@ class FaceLandmarkExtractor:
         mean_rgb = np.mean(rgb_frame[mask_bool], axis=0)
         return mean_rgb
 
+    def extract_video_rgb(self, video_path: str, save_path: str = None):
+        """
+        Processes an entire video file and returns extracted mean RGB signals over time and FPS.
+        Optionally saves extracted signals to disk (.csv or .npy).
+        
+        Returns:
+            rgb_signals: np.ndarray of shape (N, 3) where N is number of valid face frames
+            fps: float sampling rate of the video
+        """
+        if not os.path.exists(video_path):
+            raise FileNotFoundError(f"Video file not found at: {video_path}")
+
+        cap = cv2.VideoCapture(video_path)
+        fps = cap.get(cv2.CAP_PROP_FPS)
+
+        rgb_list = []
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            mean_rgb = self.process_frame(frame)
+            if mean_rgb is not None:
+                rgb_list.append(mean_rgb)
+
+        cap.release()
+        rgb_signals = np.array(rgb_list)
+
+        if save_path is not None:
+            os.makedirs(os.path.dirname(os.path.abspath(save_path)), exist_ok=True)
+            if save_path.endswith(".csv"):
+                np.savetxt(save_path, rgb_signals, delimiter=",", header="R,G,B", comments="")
+                print(f"Saved RGB signals to CSV: {save_path}")
+            elif save_path.endswith(".npy"):
+                np.save(save_path, rgb_signals)
+                print(f"Saved RGB signals to NPY: {save_path}")
+
+        return rgb_signals, fps
+
     def close(self):
         self.landmarker.close()
 
+
+if __name__ == "__main__":
+    print("Initializing FaceLandmarkExtractor...")
+    try:
+        extractor = FaceLandmarkExtractor()
+        print("FaceLandmarkExtractor initialized successfully!")
+        
+        # Check for sample video in data directory
+        sample_video = os.path.join("data", "UBFC-rPPG", "DATASET1", "subject1", "vid-001.avi")
+        if os.path.exists(sample_video):
+            print(f"\nProcessing sample video: {sample_video}...")
+            save_file = os.path.join("results", "subject1_rgb.csv")
+            rgb_signals, fps = extractor.extract_video_rgb(sample_video, save_path=save_file)
+            print(f"Extracted {len(rgb_signals)} frames at {fps:.2f} FPS")
+            print(f"RGB array shape: {rgb_signals.shape} (Frames, Channels: [R, G, B])")
+            print("\nFirst 5 extracted RGB mean values:")
+            for i, (r, g, b) in enumerate(rgb_signals[:5]):
+                print(f"  Frame {i:02d}: R={r:.2f}, G={g:.2f}, B={b:.2f}")
+        else:
+            print("\nNo sample video found at default location.")
+            print("Usage example:")
+            print("  rgb_signals, fps = extractor.extract_video_rgb('path/to/video.avi', save_path='results/rgb.csv')")
+
+        extractor.close()
+    except Exception as e:
+        print(f"Error during initialization: {e}")
 
 
