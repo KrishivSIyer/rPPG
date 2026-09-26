@@ -18,3 +18,8 @@ env/
 .idea/
 .DS_Store
 Thumbs.db
+
+# Model Weights and Checkpoints
+models/
+test_models/
+*.pth
