@@ -20,6 +20,10 @@ env/
 Thumbs.db
 
 # Model Weights and Checkpoints
-models/
+models/*
+!models/rppgnet_best.pth
+!models/haarcascade_frontalface_default.xml
+!models/face_landmarker.task
 test_models/
 *.pth
+!models/*.pth
