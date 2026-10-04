@@ -4,9 +4,11 @@ import argparse
 import numpy as np
 import pandas as pd
 import torch
-from scipy.signal import welch
-from scipy.stats import pearsonr
 import matplotlib.pyplot as plt
+
+def pearsonr_np(x: np.ndarray, y: np.ndarray):
+    corr = np.corrcoef(x, y)[0, 1]
+    return float(corr) if not np.isnan(corr) else 0.0
 
 # Ensure src and src/training directories are in sys.path
 TRAINING_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -106,8 +108,8 @@ def evaluate_model_pipeline(
 
     # 6. Metrics Calculation
     # Waveform Pearson Correlation
-    r_chrom, _ = pearsonr(chrom_pulse, gt_pulse)
-    r_model, _ = pearsonr(model_pulse, gt_pulse)
+    r_chrom = pearsonr_np(chrom_pulse, gt_pulse)
+    r_model = pearsonr_np(model_pulse, gt_pulse)
 
     # Heart Rate MAE (BPM)
     mae_chrom = abs(chrom_bpm - gt_bpm)
