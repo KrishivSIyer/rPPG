@@ -1,9 +1,13 @@
-numpy
-scipy
-opencv-python
-mediapipe
-matplotlib
-pandas
-torch
-torchvision
-jupyter
+# Core Dependencies
+numpy>=1.20.0
+pandas>=1.3.0
+torch>=1.10.0
+torchvision>=0.11.0
+opencv-python>=4.5.0
+matplotlib>=3.4.0
+
+# Optional / Recommended Dependencies
+mediapipe>=0.8.9  # Primary face mesh detector (OpenCV Haar Cascade is used as fallback if MediaPipe is blocked/unavailable)
+
+# Note: scipy is not required (pure NumPy FFT & correlation algorithms are used for AppLocker compatibility)
+
