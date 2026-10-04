@@ -2,32 +2,46 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
-from scipy.signal import welch
-from scipy.stats import pearsonr
 import matplotlib.pyplot as plt
 
 from heart_rate import extract_green_pulse, extract_chrom_pulse, calculate_heart_rate
 
 
+def pearsonr_np(x: np.ndarray, y: np.ndarray):
+    if len(x) < 2:
+        return 0.0, 0.0
+    corr = np.corrcoef(x, y)[0, 1]
+    return float(corr) if not np.isnan(corr) else 0.0, 0.0
+
+
 def load_ground_truth(gt_path: str):
     """
-    Parses UBFC-rPPG gtdump.xmp file.
-    
-    Format:
-        Col 0: Timestamp (ms)
-        Col 1: Ground Truth Heart Rate (BPM) from pulse oximeter
-        Col 2: SpO2 (%)
-        Col 3: Raw PPG pulse waveform
+    Parses UBFC-rPPG ground truth file (.txt or .xmp).
     """
-    data = np.loadtxt(gt_path, delimiter=",")
-    timestamps_ms = data[:, 0]
-    gt_hr_series = data[:, 1]
-    spo2_series = data[:, 2]
-    gt_ppg_signal = data[:, 3]
-
-    # Calculate GT sampling rate
-    time_sec = (timestamps_ms - timestamps_ms[0]) / 1000.0
-    gt_fps = len(time_sec) / (time_sec[-1] - time_sec[0])
+    if gt_path.endswith(".xmp"):
+        data = np.loadtxt(gt_path, delimiter=",")
+        timestamps_ms = data[:, 0]
+        gt_hr_series = data[:, 1]
+        spo2_series = data[:, 2]
+        gt_ppg_signal = data[:, 3]
+        time_sec = (timestamps_ms - timestamps_ms[0]) / 1000.0
+        gt_fps = len(time_sec) / (time_sec[-1] - time_sec[0])
+    else:
+        # Space-separated UBFC ground_truth.txt format
+        data = np.loadtxt(gt_path)
+        if data.ndim == 2:
+            gt_ppg_signal = data[0, :]
+            gt_hr_series = data[1, :]
+            time_sec = data[2, :]
+            time_diff = time_sec[-1] - time_sec[0]
+            gt_fps = len(time_sec) / time_diff if time_diff > 0 else 30.0
+            spo2_series = np.zeros_like(gt_hr_series)
+        else:
+            gt_ppg_signal = data
+            gt_hr_series = np.zeros_like(data)
+            spo2_series = np.zeros_like(data)
+            time_sec = np.arange(len(data)) / 30.0
+            gt_fps = 30.0
 
     return {
         "time_sec": time_sec,
@@ -35,7 +49,7 @@ def load_ground_truth(gt_path: str):
         "spo2_series": spo2_series,
         "gt_ppg_signal": gt_ppg_signal,
         "gt_fps": gt_fps,
-        "mean_gt_hr": np.mean(gt_hr_series)
+        "mean_gt_hr": np.mean(gt_hr_series) if len(gt_hr_series) > 0 else 0.0
     }
 
 
@@ -95,10 +109,7 @@ def evaluate_ground_truth(rgb_csv_path: str, gt_path: str, video_fps: float = 30
 
     # Compute GT PPG PSD Peak HR
     gt_pulse_norm = gt_data["gt_ppg_signal"] - np.mean(gt_data["gt_ppg_signal"])
-    gt_freqs, gt_psd = welch(gt_pulse_norm, fs=gt_data["gt_fps"], nperseg=min(len(gt_pulse_norm), int(gt_data["gt_fps"]*10)), nfft=2048)
-    valid_mask = (gt_freqs >= 0.75) & (gt_freqs <= 2.5)
-    gt_peak_freq = gt_freqs[valid_mask][np.argmax(gt_psd[valid_mask])]
-    gt_psd_bpm = gt_peak_freq * 60.0
+    gt_psd_bpm, gt_freqs, gt_psd, _ = calculate_heart_rate(gt_pulse_norm, gt_data["gt_fps"])
 
     mean_gt_bpm = gt_data["mean_gt_hr"]
 
@@ -116,8 +127,8 @@ def evaluate_ground_truth(rgb_csv_path: str, gt_path: str, video_fps: float = 30
     g_mape = np.mean(np.abs((g_hr_win - gt_hr_interpolated) / gt_hr_interpolated)) * 100.0
     c_mape = np.mean(np.abs((c_hr_win - gt_hr_interpolated) / gt_hr_interpolated)) * 100.0
 
-    g_corr, _ = pearsonr(g_hr_win, gt_hr_interpolated) if len(g_hr_win) > 1 else (0.0, 0.0)
-    c_corr, _ = pearsonr(c_hr_win, gt_hr_interpolated) if len(c_hr_win) > 1 else (0.0, 0.0)
+    g_corr, _ = pearsonr_np(g_hr_win, gt_hr_interpolated)
+    c_corr, _ = pearsonr_np(c_hr_win, gt_hr_interpolated)
 
     # 3. Plotting Comprehensive Ground Truth Comparison
     os.makedirs(os.path.dirname(os.path.abspath(output_plot)), exist_ok=True)
@@ -150,9 +161,9 @@ def evaluate_ground_truth(rgb_csv_path: str, gt_path: str, video_fps: float = 30
     axes[1].grid(True, linestyle="--", alpha=0.5)
 
     # Plot 3: Power Spectral Density Comparison
-    axes[2].plot(gt_freqs * 60.0, gt_psd / np.max(gt_psd[valid_mask]), label=f"GT PPG Spectral Peak ({gt_psd_bpm:.1f} BPM)", color="black", linewidth=1.8)
-    axes[2].plot(g_freqs * 60.0, g_psd / np.max(g_psd[(g_freqs>=0.75)&(g_freqs<=2.5)]), label=f"Green Channel Peak ({g_bpm_global:.1f} BPM)", color="green", linestyle=":")
-    axes[2].plot(c_freqs * 60.0, c_psd / np.max(c_psd[(c_freqs>=0.75)&(c_freqs<=2.5)]), label=f"CHROM Peak ({c_bpm_global:.1f} BPM)", color="purple", linestyle="--")
+    axes[2].plot(gt_freqs * 60.0, gt_psd / np.max(gt_psd[(gt_freqs >= 0.75) & (gt_freqs <= 2.5)]), label=f"GT PPG Spectral Peak ({gt_psd_bpm:.1f} BPM)", color="black", linewidth=1.8)
+    axes[2].plot(g_freqs * 60.0, g_psd / np.max(g_psd[(g_freqs >= 0.75) & (g_freqs <= 2.5)]), label=f"Green Channel Peak ({g_bpm_global:.1f} BPM)", color="green", linestyle=":")
+    axes[2].plot(c_freqs * 60.0, c_psd / np.max(c_psd[(c_freqs >= 0.75) & (c_freqs <= 2.5)]), label=f"CHROM Peak ({c_bpm_global:.1f} BPM)", color="purple", linestyle="--")
     axes[2].set_xlim(40, 150)
     axes[2].set_title("3. Frequency Spectra Comparison (FFT / Welch PSD)")
     axes[2].set_xlabel("Heart Rate (BPM)")
