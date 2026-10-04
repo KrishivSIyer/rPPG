@@ -72,37 +72,37 @@ $$S_{\text{CHROM}} = X_s - \alpha Y_s \quad \text{where} \quad \alpha = \frac{\s
 
 ```text
 rPPG/
+├── predict.py                   # Single-command end-to-end video inference & HR prediction
 ├── models/
 │   ├── face_landmarker.task     # Pretrained MediaPipe Face Landmarker model task
-│   └── rppgnet_best.pth         # Saved PyTorch checkpoint for rPPGNet
+│   ├── haarcascade_frontalface_default.xml # OpenCV face detection fallback
+│   └── rppgnet_best.pth         # Fine-tuned PyTorch checkpoint for rPPGNet
 ├── data/
-│   └── UBFC-rPPG/              # Dataset directory for benchmark video feeds
+│   └── UBFC-rPPG/               # Dataset directory for benchmark video feeds
 ├── src/
-│   ├── pipeline.py             # Facial landmark ROI & RGB signal extractor
-│   ├── heart_rate.py           # Bandpass filtering, CHROM extraction & Welch PSD
-│   ├── evaluate.py             # Classical baseline HR evaluation script
-│   ├── download_models.py      # Downloader for MediaPipe task dependencies
+│   ├── pipeline.py              # Facial landmark ROI & RGB signal extractor (MediaPipe + OpenCV fallback)
+│   ├── heart_rate.py            # Zero-phase NumPy bandpass filtering, CHROM extraction & PSD
+│   ├── evaluate.py              # Classical baseline HR evaluation script
+│   ├── download_models.py       # Downloader for MediaPipe task dependencies
 │   └── training/
-│       ├── dataset.py          # Sliding window dataset loader (150 frames, 50% stride)
-│       ├── model.py            # rPPGNet network architecture
-│       ├── train.py            # PyTorch training loop & Pearson correlation loss
-│       ├── run_training.py     # Script to train rPPGNet on extracted signals
-│       └── evaluate_model.py   # Full model inference & visual evaluation pipeline
+│       ├── dataset.py           # Sliding window dataset loader (150 frames, 50% stride)
+│       ├── model.py             # rPPGNet network architecture
+│       ├── train.py             # PyTorch training loop, Pearson loss & fine-tuning support
+│       ├── run_training.py      # Script to train/fine-tune rPPGNet on extracted signals
+│       └── evaluate_model.py    # Full model inference & visual evaluation pipeline
 ├── results/
-│   ├── subject1_rgb.csv        # Extracted frame-by-frame mean RGB time-series
-│   ├── gtdump.xmp               # Ground truth pulse oximeter recording
-│   ├── heart_rate_analysis.png # Generated classical baseline plot
-│   └── model_vs_baseline.png   # Comparative evaluation plot
-├── rPPG_Roadmap.md             # Development roadmap and stage milestones
-├── requirements.txt            # Python dependencies
-└── README.md                   # Project overview & usage guide
+│   ├── subject1_rgb.csv         # Extracted frame-by-frame mean RGB time-series
+│   ├── gtdump.xmp                # Ground truth pulse oximeter recording
+│   ├── heart_rate_analysis.png  # Generated classical baseline plot
+│   └── subject49_model_vs_baseline.png # Comparative fine-tuned model plot
+├── rPPG_Roadmap.md              # Development roadmap and stage milestones
+├── requirements.txt             # Python dependencies
+└── README.md                    # Project overview & usage guide
 ```
 
 ---
 
 ## 🛠️ User Guide: How to Try Out the Software
-
-Follow these steps to run contactless heart rate estimation on your own video or benchmark datasets.
 
 ### 1. Prerequisites & Installation
 
@@ -121,68 +121,58 @@ source .venv/bin/activate  # On Windows: .venv\Scripts\activate
 pip install -r requirements.txt
 ```
 
-### 2. Download MediaPipe Model Task
-Download the pretrained MediaPipe Face Landmarker model:
+---
+
+### ⚡ Quickstart: End-to-End Prediction on Any Video
+
+To estimate Heart Rate (BPM) from any facial video feed in **one single command**:
+
 ```bash
-python src/download_models.py
+python predict.py --video path/to/your_video.mp4
 ```
+
+**What happens automatically:**
+1. **Face Tracking**: Extracts face ROIs using MediaPipe Face Mesh (or OpenCV Haar Cascade if MediaPipe is blocked).
+2. **Signal Processing**: Computes frame-by-frame RGB time series.
+3. **Dual Prediction**: Calculates estimated Heart Rate using both classical **CHROM** baseline and fine-tuned **rPPGNet**.
+4. **Visual Report**: Saves a comparison plot of predicted pulse waveforms and PSD frequency spectrum to `results/prediction_output.png`.
 
 ---
 
-### 3. Step 1: Extract RGB Signals from Video
-Run the face landmark pipeline on a facial video file to extract frame-by-frame mean RGB time-series data:
+### Advanced Step-by-Step Pipeline & Fine-Tuning
 
+If you want to run individual stages, train from scratch, or fine-tune on custom/noisy videos:
+
+#### 1. Extract RGB Signals from Custom Video
 ```bash
-python src/pipeline.py
-```
-> **Custom Video:** You can pass your own video file path inside `src/pipeline.py` or programmatically import `FaceLandmarkExtractor` to generate `results/subject1_rgb.csv`.
-
----
-
-### 4. Step 2: Run Classical Heart Rate Estimation (CHROM)
-Estimate heart rate using the classical CHROM method and save a visual analysis plot:
-
-```bash
-python src/heart_rate.py --csv results/subject1_rgb.csv --fps 30.0
-```
-This generates `results/heart_rate_analysis.png` showing the raw RGB channels, filtered pulse wave, and Welch PSD peak.
-
-To evaluate against a ground truth PPG recording:
-```bash
-python src/evaluate.py --csv results/subject1_rgb.csv --gt results/gtdump.xmp --fps 30.0
+python src/pipeline.py --video path/to/video.avi --output results/custom_rgb.csv
 ```
 
----
-
-### 5. Step 3: Train the Deep Learning Model (`rPPGNet`)
-To train `rPPGNet` on extracted RGB time-series signals and ground truth PPG signals:
-
+#### 2. Run Classical CHROM Heart Rate Estimation
 ```bash
-python src/training/run_training.py --rgb results/subject1_rgb.csv --gt results/gtdump.xmp --epochs 50 --save_dir models
+python src/heart_rate.py --csv results/custom_rgb.csv --fps 30.0
 ```
-* Slices continuous signals into 150-frame windows (~5s at 30 FPS) with a 50% overlap.
-* Uses early stopping on validation Pearson correlation to prevent overfitting.
-* Saves the best model checkpoint to `models/rppgnet_best.pth`.
 
----
-
-### 6. Step 4: Evaluate Trained `rPPGNet` Model
-Compare the learned `rPPGNet` model against the classical CHROM baseline:
-
+#### 3. Fine-Tune `rPPGNet` on Custom/Noisy Datasets
+Fine-tune the pre-trained weights (`models/rppgnet_best.pth`) on a new dataset with a reduced learning rate (`1e-4`):
 ```bash
-python src/training/evaluate_model.py --rgb results/subject1_rgb.csv --gt results/gtdump.xmp --model models/rppgnet_best.pth
+python src/training/run_training.py --rgb results/custom_rgb.csv --gt path/to/ground_truth.txt --weights models/rppgnet_best.pth --lr 1e-4 --epochs 40 --save_dir models
 ```
-This script runs windowed model inference, stitches the full predicted waveform via overlap-add, computes Heart Rate (BPM) & Pearson correlation, and saves the comparison plot to `results/model_vs_baseline.png`.
+
+#### 4. Evaluate Fine-Tuned Model vs Baseline
+```bash
+python src/training/evaluate_model.py --rgb results/custom_rgb.csv --gt path/to/ground_truth.txt --model models/rppgnet_best.pth --output results/custom_evaluation.png
+```
 
 ---
 
 ## 📋 Requirements
 * Python 3.10+
-* `torch >= 2.0.0`
+* `torch >= 1.10.0`
+* `torchvision`
 * `opencv-python`
-* `mediapipe`
-* `numpy`
-* `scipy`
+* `mediapipe` (MediaPipe Face Mesh with automatic OpenCV Haar Cascade fallback)
+* `numpy` (Zero-phase FFT bandpass filtering & PSD calculation)
 * `pandas`
 * `matplotlib`
 
