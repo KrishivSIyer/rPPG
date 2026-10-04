@@ -20,9 +20,9 @@ def pearson_loss(pred, target):
     corr = num / denom
     return -corr.mean()  # Negate to minimize
 
-def train_model(rgb_signals, ppg_signal, epochs=50, batch_size=16, save_dir='models'):
+def train_model(rgb_signals, ppg_signal, epochs=50, batch_size=16, save_dir='models', pretrained_weights=None, lr=1e-3):
     """
-    Trains rPPGNet on the provided RGB and PPG signals.
+    Trains or fine-tunes rPPGNet on the provided RGB and PPG signals.
     """
     os.makedirs(save_dir, exist_ok=True)
     
@@ -34,9 +34,16 @@ def train_model(rgb_signals, ppg_signal, epochs=50, batch_size=16, save_dir='mod
         rgb_signals, ppg_signal, batch_size=batch_size
     )
     
-    # Initialize model, optimizer, scheduler
+    # Initialize model
     model = rPPGNet().to(device)
-    optimizer = optim.Adam(model.parameters(), lr=1e-3)
+    
+    # Load pre-trained weights if provided (for fine-tuning on noisy video)
+    if pretrained_weights and os.path.exists(pretrained_weights):
+        print(f"Loading pre-trained weights from: {pretrained_weights} for fine-tuning...")
+        model.load_state_dict(torch.load(pretrained_weights, map_location=device))
+        print("Pre-trained weights loaded successfully!")
+        
+    optimizer = optim.Adam(model.parameters(), lr=lr)
     # Scheduler: ReduceLROnPlateau (patience=5) — halves LR if val loss plateaus
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', patience=5, factor=0.5)
     
