@@ -2,29 +2,30 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
-from scipy.signal import butter, filtfilt, welch
-import matplotlib.pyplot as plt
-
-
 def bandpass_filter(signal: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 2.5, order: int = 3) -> np.ndarray:
     """
-    Applies a 3rd order zero-phase Butterworth bandpass filter to a 1D signal.
+    Applies zero-phase frequency-domain bandpass filtering using pure NumPy FFT.
     
     Args:
         signal: 1D temporal signal array.
         fps: Sampling rate / frames per second.
         lowcut: Lower cutoff frequency in Hz (0.75 Hz = 45 BPM).
         highcut: Upper cutoff frequency in Hz (2.5 Hz = 150 BPM).
-        order: Order of the Butterworth filter.
+        order: (Unused, for API compatibility).
         
     Returns:
         Filtered 1D signal.
     """
-    nyquist = 0.5 * fps
-    low = lowcut / nyquist
-    high = highcut / nyquist
-    b, a = butter(order, [low, high], btype='band')
-    filtered = filtfilt(b, a, signal)
+    N = len(signal)
+    if N == 0:
+        return signal
+    freqs = np.fft.rfftfreq(N, d=1.0 / fps)
+    fft_val = np.fft.rfft(signal - np.mean(signal))
+    
+    mask = (freqs >= lowcut) & (freqs <= highcut)
+    fft_val[~mask] = 0.0
+    
+    filtered = np.fft.irfft(fft_val, n=N)
     return filtered
 
 
@@ -41,7 +42,7 @@ def extract_green_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.7
     """
     g_channel = rgb_signals[:, 1]
     g_mean = np.mean(g_channel)
-    g_norm = (g_channel / g_mean) - 1.0
+    g_norm = (g_channel / (g_mean + 1e-8)) - 1.0
     g_filtered = bandpass_filter(g_norm, fps, lowcut=lowcut, highcut=highcut)
     return g_filtered
 
@@ -57,9 +58,9 @@ def extract_chrom_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.7
     Returns:
         Filtered 1D CHROM pulse signal.
     """
-    r_norm = rgb_signals[:, 0] / np.mean(rgb_signals[:, 0])
-    g_norm = rgb_signals[:, 1] / np.mean(rgb_signals[:, 1])
-    b_norm = rgb_signals[:, 2] / np.mean(rgb_signals[:, 2])
+    r_norm = rgb_signals[:, 0] / (np.mean(rgb_signals[:, 0]) + 1e-8)
+    g_norm = rgb_signals[:, 1] / (np.mean(rgb_signals[:, 1]) + 1e-8)
+    b_norm = rgb_signals[:, 2] / (np.mean(rgb_signals[:, 2]) + 1e-8)
 
     x = 3.0 * r_norm - 2.0 * g_norm
     y = 1.5 * r_norm + g_norm - 1.5 * b_norm
@@ -74,7 +75,7 @@ def extract_chrom_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.7
 
 def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 2.5):
     """
-    Computes Welch Power Spectral Density (PSD) and estimates Heart Rate (BPM) from peak frequency.
+    Computes Power Spectral Density (PSD) using NumPy FFT and estimates Heart Rate (BPM) from peak frequency.
     
     Args:
         pulse_signal: Filtered 1D pulse signal.
@@ -88,8 +89,14 @@ def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0
         psd: Power Spectral Density array.
         peak_freq: Dominant frequency (Hz).
     """
-    nperseg = min(len(pulse_signal), int(fps * 10))  # 10 second window or signal length
-    freqs, psd = welch(pulse_signal, fs=fps, nperseg=nperseg, nfft=2048)
+    N = len(pulse_signal)
+    nfft = 2048
+    win = np.hanning(N)
+    windowed = (pulse_signal - np.mean(pulse_signal)) * win
+
+    fft_val = np.fft.rfft(windowed, n=nfft)
+    freqs = np.fft.rfftfreq(nfft, d=1.0 / fps)
+    psd = (np.abs(fft_val) ** 2) / (np.sum(win ** 2) * fps + 1e-8)
 
     # Filter frequencies to valid physiological heart rate range [0.75 Hz, 2.5 Hz]
     valid_mask = (freqs >= lowcut) & (freqs <= highcut)
