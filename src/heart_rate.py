@@ -2,6 +2,8 @@ import os
 import argparse
 import numpy as np
 import pandas as pd
+import matplotlib.pyplot as plt
+
 def bandpass_filter(signal: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 2.5, order: int = 3) -> np.ndarray:
     """
     Applies zero-phase frequency-domain bandpass filtering using pure NumPy FFT.
