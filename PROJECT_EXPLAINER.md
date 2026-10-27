@@ -178,7 +178,72 @@ Here are the most critical questions evaluators ask, along with clear, technical
 
 ---
 
-## 💻 8. Quick Execution Commands
+## 💻 8. Codebase Walkthrough: What Each File Does & Strives to Achieve
+
+Here is how the project repository is structured and what each core script strives to achieve:
+
+### 1. `predict.py` — The Single-Command Inference Engine
+- **What it does**: The primary user-facing operational entry point. Takes any raw video file (`.mp4`, `.avi`, phone or webcam recording) and executes the complete pipeline end-to-end.
+- **How it achieves it**:
+  1. Calls `FaceLandmarkExtractor` from `src/pipeline.py` to extract facial RGB signals.
+  2. Runs classical CHROM via `src/heart_rate.py` for deterministic baseline estimation.
+  3. Loads the trained `rPPGNet` weights (`models/rppgnet_best.pth`), reconstructs the deep learning waveform, and estimates learned BPM.
+  4. Plots a dual-panel visualization (waveform comparison + periodogram frequency peaks) and saves it to `results/`.
+
+### 2. `src/pipeline.py` — Computer Vision & Facial Signal Extractor
+- **What it does**: Detects the human face, isolates clean dermal tissue, and converts raw video frames into a clean $(N, 3)$ RGB time series.
+- **How it achieves it**:
+  - Uses **MediaPipe Face Mesh** to track 468 3D landmarks in real time.
+  - Generates three independent convex hull masks (forehead, left cheek, right cheek) and explicitly subtracts eye and mouth polygons so blinks and lip movements do not contaminate the signal.
+  - Spatially averages pixel intensities across the masked skin area.
+  - Handles missing face detections by recording `NaN` rows with preserved timestamps, linearly interpolating short gaps ($< 0.5\text{ s}$).
+  - Automatically falls back to an OpenCV Haar Cascade if MediaPipe is unavailable.
+
+### 3. `src/heart_rate.py` — Classical Optics & Spectral Analysis
+- **What it does**: Houses the deterministic optical baseline (CHROM) and frequency-domain cardiac metrics.
+- **How it achieves it**:
+  - Implements the **CHROM algorithm** ($3R - 2G$ and $1.5R + G - 1.5B$ with adaptive standard-deviation scaling $\alpha$) to eliminate specular surface reflection.
+  - Applies **zero-phase FFT bandpass filtering** ($0.75\text{ Hz} - 2.5\text{ Hz}$ / $45 - 150\text{ BPM}$) with zero phase distortion.
+  - Implements a **2048-point Hann-windowed periodogram** to identify the dominant spectral peak ($f_{\text{peak}}$) and convert it directly to Heart Rate ($\text{BPM} = f_{\text{peak}} \times 60$).
+
+### 4. `src/training/model.py` — The `rPPGNet` Deep Learning Architecture
+- **What it does**: Defines our specialized spatiotemporal pulse recovery neural network.
+- **How it achieves it**:
+  - **`SpatialCNN`**: Uses three 1D convolutional layers with dilations $1, 2, 4$ to expand the temporal receptive field to 15 frames ($\approx 0.5\text{ s}$), capturing full systolic peaks.
+  - **Positional Embedding**: Adds a trainable $(1, 64, 150)$ sequence tensor to give the attention mechanism awareness of chronological pulse phase.
+  - **`TemporalAttention`**: Computes Query, Key, and Value projections to build a $T \times T$ attention matrix that dynamically reweights frames, suppressing motion artifacts and prioritizing clean cardiac intervals.
+  - **Decoder**: A $1 \times 1$ Conv1D projection that maps 64 feature channels down to a single continuous 1D pulse wave.
+
+### 5. `src/training/dataset.py` — Data Pipeline & Boundary-Preserving Slicing
+- **What it does**: Prepares raw RGB and Ground Truth PPG data for deep learning training and validation.
+- **How it achieves it**:
+  - Normalizes RGB channels (zero-mean, unit-variance).
+  - Slices long recordings into 150-frame windows with a 75-frame stride (50% overlap).
+  - **Boundary preservation**: Appends a final window ending at exact frame $N$ so no trailing frames are lost.
+  - Provides sequential subsets to prevent data leakage between overlapping training and validation windows.
+
+### 6. `src/training/train.py` — Training Loop & Pearson Loss Engine
+- **What it does**: Orchestrates model optimization, loss computation, and checkpoint management.
+- **How it achieves it**:
+  - Computes the **Negative Pearson Correlation Loss** ($\mathcal{L} = 1 - r$), forcing the model to learn periodic pulse wave morphology rather than lighting-dependent pixel scale.
+  - Runs Adam optimizer with `ReduceLROnPlateau` learning rate scheduling and early stopping.
+  - Saves run metadata into `config.json` alongside checkpoints in designated run folders to ensure baseline weights are never accidentally overwritten.
+
+### 7. `src/training/run_training.py` — Training & Fine-Tuning CLI Interface
+- **What it does**: The command-line utility used to launch training from scratch or fine-tune existing weights on new subjects.
+- **How it achieves it**:
+  - Parses dataset paths, loads extracted CSV signals and ground-truth recordings, aligns timestamps, and initiates transfer learning.
+
+### 8. `src/training/evaluate_model.py` — Model Evaluation & Signal Reconstruction
+- **What it does**: Evaluates trained models against clinical ground truth and generates comparative scientific plots.
+- **How it achieves it**:
+  - Implements **Periodic Hann Overlap-Add** to stitch windowed model predictions back into a seamless, continuous full-length signal with uniform amplitude.
+  - Computes Mean Absolute Error (MAE) in BPM and waveform Pearson correlation ($r$) against clinical pulse oximeter recordings.
+  - Generates publication-ready comparative visualization figures.
+
+---
+
+## 💻 9. Quick Execution Commands
 
 ```powershell
 # 1. Run inference on custom video (myface.mp4)
