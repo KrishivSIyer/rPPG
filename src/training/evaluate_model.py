@@ -46,9 +46,8 @@ def reconstruct_full_waveform(model, dataset, full_length, window_size=150, stri
     full_pred  = np.zeros(full_length, dtype=np.float32)
     weight_sum = np.zeros(full_length, dtype=np.float32)
 
-    # Hann window for weighted overlap-add (weights sum to a near-constant value
-    # when overlap >= 50%, giving uniform reconstruction amplitude).
-    hann = np.hanning(window_size).astype(np.float32)
+    # Periodic Hann window (endpoints > 0 so first and last frames are not zeroed)
+    hann = (0.5 * (1.0 - np.cos(2.0 * np.pi * (np.arange(window_size) + 0.5) / window_size))).astype(np.float32)
 
     with torch.no_grad():
         for i, start in enumerate(dataset.start_indices):
@@ -106,7 +105,11 @@ def evaluate_model_pipeline(
     # 2. Load Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model  = rPPGNet().to(device)
-    model.load_state_dict(torch.load(model_path, map_location=device))
+    try:
+        model.load_state_dict(torch.load(model_path, map_location=device))
+    except RuntimeError as e:
+        print(f"[Notice] Loading checkpoint with strict=False due to architectural updates: {e}")
+        model.load_state_dict(torch.load(model_path, map_location=device), strict=False)
     print(f"Loaded trained rPPGNet model from: {model_path}")
 
     # 3. Model Inference & Signal Reconstruction (A5: Hann-weighted overlap-add)

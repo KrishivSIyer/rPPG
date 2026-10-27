@@ -146,7 +146,7 @@ def train_model(
             best_val_corr = val_corr_epoch
             torch.save(model.state_dict(), out_checkpoint)
             patience_counter = 0
-            print(f"  --> Saved new best model → {out_checkpoint}")
+            print(f"  --> Saved new best model -> {out_checkpoint}")
         else:
             patience_counter += 1
 
