@@ -105,11 +105,7 @@ def evaluate_model_pipeline(
     # 2. Load Model
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model  = rPPGNet().to(device)
-    try:
-        model.load_state_dict(torch.load(model_path, map_location=device))
-    except RuntimeError as e:
-        print(f"[Notice] Loading checkpoint with strict=False due to architectural updates: {e}")
-        model.load_state_dict(torch.load(model_path, map_location=device), strict=False)
+    model.load_state_dict(torch.load(model_path, map_location=device))
     print(f"Loaded trained rPPGNet model from: {model_path}")
 
     # 3. Model Inference & Signal Reconstruction (A5: Hann-weighted overlap-add)
