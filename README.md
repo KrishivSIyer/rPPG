@@ -59,12 +59,12 @@ $$S_{\text{CHROM}} = X_s - \alpha Y_s \quad \text{where} \quad \alpha = \frac{\s
 
 ### 3. Deep Temporal Attention Neural Network (`rPPGNet`)
 * **Spatial 1D CNN:** Extracts high-level spatiotemporal features from windowed RGB time-series inputs.
-* **Temporal Attention Module:** Dynamically calculates attention scores across temporal frames, suppressing noisy frames corrupted by motion or lighting shifts.
+* **Temporal Attention Module:** A T×T self-attention block (Q/K/V projections via 1×1 Conv1d) that reweights frames by content similarity. Each output frame is a weighted mix of all other frames’ values.
 * **Negative Pearson Correlation Loss:** Optimizes for physiological pulse wave shape rather than absolute MSE.
 
 ### 4. Heart Rate Extraction & Frequency Analysis
-* **Butterworth Bandpass Filter:** Filters out non-physiological frequencies outside the 45–150 BPM range ($0.75\text{ Hz} - 2.5\text{ Hz}$).
-* **Welch Power Spectral Density (PSD):** Finds the dominant frequency peak to compute the heart rate in Beats Per Minute (BPM): $\text{BPM} = f_{\text{peak}} \times 60$.
+* **Zero-phase FFT Bandpass Filter (ideal rectangular mask):** Filters out non-physiological frequencies outside the 45–150 BPM range ($0.75\text{ Hz} - 2.5\text{ Hz}$).
+* **Hann-Windowed Periodogram:** A single Hann-windowed FFT (zero-padded to 2048 points) finds the dominant frequency peak; heart rate in BPM: $\text{BPM} = f_{\text{peak}} \times 60$.
 
 ---
 
@@ -156,7 +156,7 @@ python src/heart_rate.py --csv results/custom_rgb.csv --fps 30.0
 #### 3. Fine-Tune `rPPGNet` on Custom/Noisy Datasets
 Fine-tune the pre-trained weights (`models/rppgnet_best.pth`) on a new dataset with a reduced learning rate (`1e-4`):
 ```bash
-python src/training/run_training.py --rgb results/custom_rgb.csv --gt path/to/ground_truth.txt --weights models/rppgnet_best.pth --lr 1e-4 --epochs 40 --save_dir models
+python src/training/run_training.py --rgb results/custom_rgb.csv --gt path/to/ground_truth.txt --weights models/rppgnet_best.pth --lr 1e-4 --epochs 40 --save_dir models/finetuned --run_name subject49_ft/finetuned --run_name subject49_ft
 ```
 
 #### 4. Evaluate Fine-Tuned Model vs Baseline
@@ -169,7 +169,6 @@ python src/training/evaluate_model.py --rgb results/custom_rgb.csv --gt path/to/
 ## 📋 Requirements
 * Python 3.10+
 * `torch >= 1.10.0`
-* `torchvision`
 * `opencv-python`
 * `mediapipe` (MediaPipe Face Mesh with automatic OpenCV Haar Cascade fallback)
 * `numpy` (Zero-phase FFT bandpass filtering & PSD calculation)

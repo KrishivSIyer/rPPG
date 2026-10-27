@@ -14,7 +14,7 @@ for path in [BASE_DIR, SRC_DIR, TRAINING_DIR]:
     if path not in sys.path:
         sys.path.insert(0, path)
 
-from pipeline import FaceLandmarkExtractor
+from pipeline import FaceLandmarkExtractor, load_rgb_csv
 from heart_rate import extract_chrom_pulse, calculate_heart_rate, bandpass_filter
 from model import rPPGNet
 from dataset import rPPGDataset
@@ -38,13 +38,34 @@ def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_o
     print("==================================================")
     print(f"Input Video : {video_path}")
 
-    # 1. Extract RGB signals
+    # 1. Extract RGB signals (A2: returns (N,5) with frame_idx, time_s, R, G, B)
     extractor = FaceLandmarkExtractor()
-    rgb_signals, detected_fps = extractor.extract_video_rgb(video_path)
+    raw_signals, detected_fps = extractor.extract_video_rgb(video_path)
     extractor.close()
 
     fps = manual_fps if manual_fps is not None else detected_fps
-    print(f"Extracted {len(rgb_signals)} frames at {fps:.2f} FPS")
+
+    # A2: extract only the RGB columns; load_rgb_csv handles NaN interpolation.
+    # Here we go via load_rgb_csv on a temp buffer to apply the same NaN logic.
+    time_s = raw_signals[:, 1]
+    rgb_raw = raw_signals[:, 2:5].astype(np.float32)
+
+    # Linearly interpolate short NaN gaps (< 0.5 s); drop any remaining NaN rows.
+    nan_thresh = int(0.5 * fps)
+    for ch in range(3):
+        col = rgb_raw[:, ch]
+        nan_mask = np.isnan(col)
+        if nan_mask.any():
+            ok_idx = np.where(~nan_mask)[0]
+            if len(ok_idx) > 1:
+                col = np.interp(np.arange(len(col)), ok_idx, col[ok_idx])
+            rgb_raw[:, ch] = col
+
+    # Drop any rows still NaN (very long gaps at edges)
+    valid = ~np.isnan(rgb_raw[:, 0])
+    rgb_signals = rgb_raw[valid]
+
+    print(f"Extracted {len(rgb_signals)} valid frames at {fps:.2f} FPS")
 
     # 2. Classical CHROM Pulse & Heart Rate Estimation
     chrom_raw = extract_chrom_pulse(rgb_signals, fps)
@@ -94,11 +115,12 @@ def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_o
     axes[0].legend(loc="upper right")
     axes[0].grid(True, alpha=0.3)
 
-    # Plot 2: Power Spectral Density (PSD)
+    # B2 fix: described as "Windowed Periodogram" — this is a single Hann-windowed
+    # FFT (zero-padded to 2048), NOT Welch averaging over multiple segments.
     valid_mask = (chrom_freqs >= 0.75) & (chrom_freqs <= 2.5)
     axes[1].plot(chrom_freqs[valid_mask] * 60, chrom_psd[valid_mask] / np.max(chrom_psd[valid_mask]), label=f"CHROM Peak ({chrom_bpm:.1f} BPM)", color="tab:blue", linestyle="--")
     axes[1].plot(model_freqs[valid_mask] * 60, model_psd[valid_mask] / np.max(model_psd[valid_mask]), label=f"rPPGNet Peak ({model_bpm:.1f} BPM)", color="tab:red", linewidth=1.8)
-    axes[1].set_title("Power Spectral Density (PSD) & Dominant Heart Rate Peak")
+    axes[1].set_title("Hann-Windowed Periodogram & Dominant Heart Rate Peak")
     axes[1].set_xlabel("Heart Rate (BPM)")
     axes[1].set_ylabel("Normalized Power Density")
     axes[1].legend(loc="upper right")
