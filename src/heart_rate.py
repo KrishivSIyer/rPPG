@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-def bandpass_filter(signal: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 2.5, order: int = 3) -> np.ndarray:
+def bandpass_filter(signal: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 1.92, order: int = 3) -> np.ndarray:
     """
     Applies zero-phase frequency-domain bandpass filtering using pure NumPy FFT.
     
@@ -12,7 +12,7 @@ def bandpass_filter(signal: np.ndarray, fps: float, lowcut: float = 0.75, highcu
         signal: 1D temporal signal array.
         fps: Sampling rate / frames per second.
         lowcut: Lower cutoff frequency in Hz (0.75 Hz = 45 BPM).
-        highcut: Upper cutoff frequency in Hz (2.5 Hz = 150 BPM).
+        highcut: Upper cutoff frequency in Hz (1.92 Hz = 115 BPM).
         order: (Unused, for API compatibility).
         
     Returns:
@@ -31,7 +31,7 @@ def bandpass_filter(signal: np.ndarray, fps: float, lowcut: float = 0.75, highcu
     return filtered
 
 
-def extract_green_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 2.5) -> np.ndarray:
+def extract_green_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 1.92) -> np.ndarray:
     """
     Extracts pulse signal using the raw Green channel normalization + bandpass filtering.
     
@@ -49,7 +49,7 @@ def extract_green_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.7
     return g_filtered
 
 
-def extract_chrom_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 2.5) -> np.ndarray:
+def extract_chrom_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 1.92) -> np.ndarray:
     """
     Extracts pulse signal using the CHROM (Chrominance-based) method.
     
@@ -75,7 +75,7 @@ def extract_chrom_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.7
     return s_chrom
 
 
-def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0.90, highcut: float = 2.5):
+def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0.90, highcut: float = 1.92):
     """
     Computes Power Spectral Density (PSD) using NumPy FFT and estimates Heart Rate (BPM) from peak frequency.
     
@@ -83,7 +83,7 @@ def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0
         pulse_signal: Filtered 1D pulse signal.
         fps: Sampling rate (FPS).
         lowcut: Minimum valid heart rate frequency in Hz (0.90 Hz = 54 BPM).
-        highcut: Maximum valid heart rate frequency in Hz (2.5 Hz = 150 BPM).
+        highcut: Maximum valid heart rate frequency in Hz (1.92 Hz = 115 BPM).
         
     Returns:
         bpm: Estimated Heart Rate in Beats Per Minute.

@@ -34,7 +34,7 @@ from dataset import rPPGDataset
 from evaluate_model import reconstruct_full_waveform
 
 
-def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_output.png", model_path: str = "models/rppgnet_best.pth", manual_fps: float = None, min_hr: float = 54.0, max_hr: float = 150.0):
+def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_output.png", model_path: str = "models/rppgnet_best.pth", manual_fps: float = None, min_hr: float = 54.0, max_hr: float = 115.0):
     """
     End-to-end inference pipeline: Takes a video, extracts facial RGB signals,
     and estimates heart rate using both classical CHROM and fine-tuned rPPGNet.
@@ -155,7 +155,7 @@ def main():
     parser.add_argument("--model", type=str, default="models/rppgnet_best.pth", help="Path to trained model weights.")
     parser.add_argument("--fps", type=float, default=None, help="Manual video FPS override.")
     parser.add_argument("--min_hr", type=float, default=54.0, help="Minimum physiological heart rate in BPM (default: 54.0).")
-    parser.add_argument("--max_hr", type=float, default=150.0, help="Maximum physiological heart rate in BPM (default: 150.0).")
+    parser.add_argument("--max_hr", type=float, default=115.0, help="Maximum physiological heart rate in BPM (default: 115.0).")
     args = parser.parse_args()
 
     predict_heart_rate(args.video, output_plot=args.output, model_path=args.model, manual_fps=args.fps, min_hr=args.min_hr, max_hr=args.max_hr)
