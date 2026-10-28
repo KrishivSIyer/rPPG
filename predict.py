@@ -1,5 +1,18 @@
 import os
 import sys
+import subprocess
+
+# Auto-switch to project virtual environment if user ran with global/system python
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+VENV_PYTHON = os.path.join(BASE_DIR, ".venv", "Scripts", "python.exe")
+if os.path.exists(VENV_PYTHON):
+    current_exe = os.path.normcase(os.path.abspath(sys.executable))
+    target_exe = os.path.normcase(os.path.abspath(VENV_PYTHON))
+    if current_exe != target_exe and os.environ.get("_RPPG_REEXEC") != "1":
+        os.environ["_RPPG_REEXEC"] = "1"
+        result = subprocess.call([VENV_PYTHON] + sys.argv)
+        sys.exit(result)
+
 import argparse
 import numpy as np
 import pandas as pd
