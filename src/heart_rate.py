@@ -75,14 +75,14 @@ def extract_chrom_pulse(rgb_signals: np.ndarray, fps: float, lowcut: float = 0.7
     return s_chrom
 
 
-def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0.75, highcut: float = 2.5):
+def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0.90, highcut: float = 2.5):
     """
     Computes Power Spectral Density (PSD) using NumPy FFT and estimates Heart Rate (BPM) from peak frequency.
     
     Args:
         pulse_signal: Filtered 1D pulse signal.
         fps: Sampling rate (FPS).
-        lowcut: Minimum valid heart rate frequency in Hz (0.75 Hz = 45 BPM).
+        lowcut: Minimum valid heart rate frequency in Hz (0.90 Hz = 54 BPM).
         highcut: Maximum valid heart rate frequency in Hz (2.5 Hz = 150 BPM).
         
     Returns:
@@ -91,6 +91,8 @@ def calculate_heart_rate(pulse_signal: np.ndarray, fps: float, lowcut: float = 0
         psd: Power Spectral Density array.
         peak_freq: Dominant frequency (Hz).
     """
+    from scipy.signal import detrend
+    pulse_signal = detrend(pulse_signal, type='linear')
     N = len(pulse_signal)
     nfft = 2048
     win = np.hanning(N)

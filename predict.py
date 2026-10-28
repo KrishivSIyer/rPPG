@@ -34,7 +34,7 @@ from dataset import rPPGDataset
 from evaluate_model import reconstruct_full_waveform
 
 
-def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_output.png", model_path: str = "models/rppgnet_best.pth", manual_fps: float = None):
+def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_output.png", model_path: str = "models/rppgnet_best.pth", manual_fps: float = None, min_hr: float = 54.0, max_hr: float = 150.0):
     """
     End-to-end inference pipeline: Takes a video, extracts facial RGB signals,
     and estimates heart rate using both classical CHROM and fine-tuned rPPGNet.
@@ -80,9 +80,12 @@ def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_o
 
     print(f"Extracted {len(rgb_signals)} valid frames at {fps:.2f} FPS")
 
+    lowcut = min_hr / 60.0
+    highcut = max_hr / 60.0
+
     # 2. Classical CHROM Pulse & Heart Rate Estimation
-    chrom_raw = extract_chrom_pulse(rgb_signals, fps)
-    chrom_bpm, chrom_freqs, chrom_psd, _ = calculate_heart_rate(chrom_raw, fps)
+    chrom_raw = extract_chrom_pulse(rgb_signals, fps, lowcut=lowcut, highcut=highcut)
+    chrom_bpm, chrom_freqs, chrom_psd, _ = calculate_heart_rate(chrom_raw, fps, lowcut=lowcut, highcut=highcut)
 
     # 3. Learned rPPGNet Model Inference & Heart Rate Estimation
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -95,8 +98,8 @@ def predict_heart_rate(video_path: str, output_plot: str = "results/prediction_o
     dataset = rPPGDataset(rgb_signals, dummy_gt, window_size=150, stride=75)
 
     model_raw = reconstruct_full_waveform(model, dataset, len(rgb_signals))
-    model_pulse = bandpass_filter(model_raw, fps, lowcut=0.75, highcut=2.5)
-    model_bpm, model_freqs, model_psd, _ = calculate_heart_rate(model_pulse, fps)
+    model_pulse = bandpass_filter(model_raw, fps, lowcut=lowcut, highcut=highcut)
+    model_bpm, model_freqs, model_psd, _ = calculate_heart_rate(model_pulse, fps, lowcut=lowcut, highcut=highcut)
 
     print("\n---------------- PREDICTION SUMMARY ----------------")
     print(f"{'Method':<25} | {'Estimated Heart Rate (BPM)':<25}")
@@ -151,9 +154,11 @@ def main():
     parser.add_argument("--output", type=str, default="results/prediction_output.png", help="Path to output plot image.")
     parser.add_argument("--model", type=str, default="models/rppgnet_best.pth", help="Path to trained model weights.")
     parser.add_argument("--fps", type=float, default=None, help="Manual video FPS override.")
+    parser.add_argument("--min_hr", type=float, default=54.0, help="Minimum physiological heart rate in BPM (default: 54.0).")
+    parser.add_argument("--max_hr", type=float, default=150.0, help="Maximum physiological heart rate in BPM (default: 150.0).")
     args = parser.parse_args()
 
-    predict_heart_rate(args.video, output_plot=args.output, model_path=args.model, manual_fps=args.fps)
+    predict_heart_rate(args.video, output_plot=args.output, model_path=args.model, manual_fps=args.fps, min_hr=args.min_hr, max_hr=args.max_hr)
 
 
 if __name__ == "__main__":
